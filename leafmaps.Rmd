@@ -1,0 +1,104 @@
+---
+title: "Untitled"
+author: "Gregory Utkin"
+date: "11/21/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(shiny)
+library(classInt)
+library(RColorBrewer)
+library(leaflet)
+library(leaflet.providers)
+library(plotly)
+library(here)
+library(sf)
+```
+
+```{r}
+
+c_df <- st_read(here("data", "seg_data.shp"))
+
+c_df <- sf::st_transform(c_df, "+proj=longlat +datum=WGS84")
+glimpse(c_df)
+
+
+mybins <- c(0, 0.1, 0.2, 0.3, 0.5, 0.8, 1, 1.2, 1.540654)
+mypalette <- colorBin(palette = "Reds", domain = c_df$ls, na.color = "transparent", bins = mybins)
+
+
+
+
+brks <- classIntervals(c_df$ls, n = 5, style = "quantile")
+c_df$cut_ls <- cut(c_df$ls, breaks = brks$brks)
+
+myfact <- colorFactor(palette = "Reds", domain = c_df$cut_ls, na.color = "Grey")
+
+
+ui = fluidPage(titlePanel("Residential Racial Segregation 2018"),
+               leafletOutput("map1"),
+               br(),
+               br(),
+               plotlyOutput("hist"))
+
+
+
+server = function(input, output){
+  
+      
+           
+          output$map1 <- renderLeaflet({
+             leaflet(c_df) %>%
+             addProviderTiles(providers$CartoDB.Voyager) %>%
+             setView(lat = 37.0902, lng = -95.7129, zoom = 4)
+             
+           })
+          
+          
+           output$hist <- renderPlotly({
+            fig <- plot_ly()
+            fig <- fig %>% add_histogram(x = ~c_df$ls)
+            fig <- fig %>% layout(title = "Histogram of Residential Segregation Index 2018")
+            
+          })
+           
+           observe({
+             
+             leafletProxy(mapId = "map1", data = c_df) %>% 
+               addPolygons(
+                 fillColor = ~mypalette(ls),
+                 weight = .3,
+                 stroke = T,
+                 color = "black",
+                 fillOpacity = 0.5,
+                 label = ~name,
+                 popup = paste("County", c_df$name, "<br>",
+                               "Urban or not?:", c_df$urban, "<br>",
+                               "Population: ", round(c_df$tot_pop, 2), "<br>",
+                               "Segregation", round(c_df$ls, 2), "<br>",
+                               "SES", round(c_df$ses, 2), "<br>",
+                               "Gini Index", round(c_df$gini, 2), "<br>",
+                               "% Unemployed", round(c_df$pct_unemp, 2), "<br>",
+                               "% Poverty", round(c_df$pct_pov, 2), "<br>",
+                               "Median hosue value", c_df$medhval, "<br>",
+                               "% Work in manufacturing", round(c_df$pct_manu, 2), "<br>",
+                               "% Female", round(c_df$pct_fem, 2), "<br>",
+                               "% Female headed households", round(c_df$pct_femhh, 2), "<br>"))
+              
+           })
+}
+           
+
+shinyApp(ui, server)
+
+
+
+
+
+
+
+```
+
