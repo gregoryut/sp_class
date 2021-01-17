@@ -1,0 +1,907 @@
+---
+title: 'The Relationship Between Segregation, Socio-Economic Status, And Life Expectancy by using County Level Data. '
+author: "Gregory Utkin"
+date: "December 17, 2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+<style type="text/css">
+
+h1.title {
+  font-size: 26px;
+  color: Black;
+  text-align: center;
+}
+h4.author { 
+  font-size: 18px;
+  color: Black;
+  text-align: center;
+}
+h4.date {
+  font-size: 12px;
+  color: Black;
+  text-align: center;
+}
+</style>
+
+
+```{r setup, include=FALSE, warning=F}
+
+# load packages 
+
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = TRUE,
+	warning = TRUE
+)
+
+
+knitr::opts_chunk$set(echo = TRUE)
+options(tigris_use_cache = TRUE)
+options(scipen = 999)
+
+library(tidyverse)
+library(tidycensus)
+library(sf)
+library(corrgram)
+library(tmap)
+library(segregation)
+library(spdep)
+library(leaflet)
+library(here)
+library(spdep)
+library(maptools)
+library(rgdal)
+library(spatialreg)
+library(gt)
+library(gtsummary)
+library(kableExtra)
+library(classInt)
+
+setwd(here())
+
+set.seed(12341)
+```
+
+
+```{r include=FALSE, warning=F}
+
+# load data 
+cdc_life <- read_csv(here("data", "US_A.csv"))
+
+head(cdc_life)
+
+cdc_life <- cdc_life %>%
+  unite("GEOID", STATE2KX, CNTY2KX, sep = "") %>%
+  rename(
+    tract_id = `Tract ID`,
+    life_E = `e(0)`
+  )
+
+glimpse(cdc_life)
+
+cdc_life_ct <- cdc_life %>%
+  group_by(GEOID) %>%
+  summarize(
+    mean_life_exp = mean(life_E)
+  )
+
+glimpse(cdc_life_ct)
+
+
+#load to see variables
+acs_data_vars = load_variables("2018", dataset = "acs5", cache = T)
+
+
+
+## need to add unemployment
+# choose variables
+vars = c(total = "B01003_001",
+         poverty = "B06012_002",
+         med_hh_income = "B19019_001",
+         median_house_value = "B25107_001",
+         median_rent = "B25031_001",
+         GINI = "B19083_001",
+         total_edu = "B15003_001",
+         high_school = "B06009_003",
+         bachelor = "B15003_022",
+         masters = "B15003_023",
+         prof_degree = "B15003_024",
+         doctorate = "B15003_025",
+         white = "B02001_002",
+         black = "B02001_003",
+         asian = "B02001_005",
+         hispanic = "B03002_012",
+         total_employed = "C24050_001",
+         female_tot = "B01001_026",
+         female_householder = "B09005_005",
+         no_health_insurance = "B18135_007",
+         manufacturing_work = "B08126_004",
+         now_married = "B06008_003",
+         in_labor_froce = "B23025_002",
+         unemployed = "B23025_005",
+         information_industry = "C24050_008",
+         fin_insur_industry = "C24050_009",
+         professional_industry = "C24050_010",
+         income_total = "B19001_001",
+         income75kto99k = "B19001_013",
+         income100kto125k = "B19001_014",
+         income125kto150k = "B19001_015",
+         income150kto199k = "B19001_016",
+         income200k_or_more = "B19001_017",
+         total_built = "B25034_001",
+         built_2010_2013 = "B25034_003",
+         built_2014_or_later = "B25034_002",
+         total_occupied = "B25036_001",
+         owner_occupied = "B25036_002",
+         renter_occupied = "B25036_013",
+         foreign_born = "B06009_025",
+         female_household = "B11002_009",
+         under5M = "B01001_003",
+         fiveto9M = "B01001_004",
+         tento14M = "B01001_005",
+         fivteento17M = "B01001_006",
+         eighteento19M = "B01001_007",
+         twentyM = "B01001_008",
+         twentyoneM = "B01001_009",
+         twentytwoto24M = "B01001_010",
+         twentyfiveto29M = "B01001_011",
+         thirtyto34M = "B01001_012",
+         thirtyfiveto39M = "B01001_013",
+         fortyto44M = "B01001_014",
+         fortyfiveto49M = "B01001_015",
+         fiftyto54M = "B01001_016",
+         fiftyfiveto59M = "B01001_017",
+         sixtyto61M = "B01001_018",
+         sixtytwoto64M = "B01001_019",
+         sixtyfiveto66M = "B01001_020",
+         sixtysevento69M = "B01001_021",
+         seventyto74M = "B01001_022",
+         seventyfiveto79M = "B01001_023",
+         eightyto84M = "B01001_024",
+         eightytive_aboveM = "B01001_025",
+         under5F = "B01001_027",
+         fiveto9F = "B01001_028",
+         tento14F = "B01001_029",
+         fivteento17F = "B01001_030",
+         eighteento19F = "B01001_031",
+         twentyF = "B01001_032",
+         twentyoneF = "B01001_033",
+         twentytwoto24F = "B01001_034",
+         twentyfiveto29F = "B01001_035",
+         thirtyto34F = "B01001_036",
+         thirtyfiveto39F = "B01001_037",
+         fortyto44F = "B01001_038",
+         fortyfiveto49F = "B01001_039",
+         fiftyto54F = "B01001_040",
+         fiftyfiveto59F = "B01001_041",
+         sixtyto61F = "B01001_042",
+         sixtytwoto64F = "B01001_043",
+         sixtyfiveto66F = "B01001_044",
+         sixtysevento69F = "B01001_045",
+         seventyto74F = "B01001_046",
+         seventyfiveto79F = "B01001_047",
+         eightyto84F = "B01001_048",
+         eightytive_aboveF = "B01001_049"
+         )
+
+
+
+# get data
+county_df = get_acs(geography = "county",
+                    variables = vars,
+                    geometry = TRUE,
+                    survey = "acs5",
+                    output = "wide",
+                    shift_geo = F)
+
+
+# select only estimate columns and drop error
+county_df = county_df[, grepl("E", colnames(county_df))]
+
+
+# only keep mainland
+county_df <- county_df[!grepl("Puerto Rico", county_df$NAME),]
+
+county_df <- county_df[!grepl("Alaska", county_df$NAME), ]
+
+county_df <- county_df[!grepl("Hawaii", county_df$NAME), ]
+
+county_df <- county_df[!grepl("American Samoa", county_df$NAME), ]
+
+county_df <- county_df[!grepl("U.S. Virgin Islands", county_df$NAME), ]
+
+
+# merge data
+county_df <- county_df %>%
+  merge(cdc_life_ct, by = "GEOID", all.x = T)
+
+
+rm(cdc_life_ct, cdc_life)
+```
+
+
+
+```{r include=FALSE, warning=F}
+
+# create state id 
+county_df$state = substr(county_df$GEOID, 1, 2)
+
+# total race
+county_df$total_race <- county_df$whiteE + county_df$blackE + county_df$hispanicE + county_df$asianE
+
+
+# diversity index Simpson's Diversity Index **D = ((SUM n(n-1))/N(N-1))
+county_df$d_index <- 1 - (((county_df$whiteE * (county_df$whiteE - 1)) +
+                      (county_df$blackE * (county_df$blackE - 1)) +
+                      (county_df$hispanicE * (county_df$hispanicE - 1)) +
+                      (county_df$asianE * (county_df$asianE - 1))) /
+                       (county_df$total_race * (county_df$total_race - 1)))
+
+
+
+
+# compute segregation index = prepare data in long form
+seg_00 <- county_df
+seg_00$geometry <- NULL
+seg_00 <- data.frame(seg_00)
+
+seg_00 <- seg_00 %>%
+  dplyr::select(GEOID, whiteE, blackE, asianE, hispanicE) %>%
+  pivot_longer(c("whiteE", "blackE", "asianE", "hispanicE"), names_to = "race", values_to = "n")
+
+local <- mutual_local(seg_00, group = "race", unit = "GEOID", weight = "n", wide = "TRUE")
+glimpse(local)
+
+
+# merge to main df
+c_df = county_df %>%
+  merge(local, 
+        by.x = "GEOID",
+        by.y = "GEOID")
+
+
+# plot to verify
+tm_shape(c_df) +
+  tm_fill('ls',
+          style = "quantile",
+          n = 8) +
+  tm_layout(
+    main.title = "M segregation index"
+  )
+
+
+# % function
+pct_func <- function(x) {
+  (x / c_df$totalE) * 100
+}
+
+
+# select and rename variables
+c_df <- c_df %>%
+  mutate(
+    name = NAME, 
+    total_pop = totalE,
+    income = income_totalE,
+    median_income = med_hh_incomeE,
+    median_rent = median_rentE,
+    median_house_value = median_house_valueE,
+    urban = ifelse(c_df$totalE > 100000, "urban", "not urban"),
+    unemployed = (c_df$unemployedE / c_df$in_labor_froceE) * 100,
+    pct_married = (c_df$now_marriedE / c_df$totalE) * 100,
+    pct_no_hins = (c_df$no_health_insurance / c_df$totalE) * 100,
+    poverty_pct = pct_func(povertyE),
+    pct_white = (whiteE / total_race) * 100,
+    pct_black = (blackE / total_race) * 100,
+    pct_asian = (asianE / total_race) * 100,
+    pct_hispanic = (hispanicE / total_race) * 100,
+    pct_bachelors_and_above = pct_func(c(bachelorE + mastersE + prof_degreeE + doctorateE)),
+    pct_high_sch = (high_schoolE / total_eduE) * 100,
+    pct_foreign_born = pct_func(foreign_bornE),
+    pct_female_household = pct_func(female_householdE),
+    pct_under5 = pct_func(c(under5ME + under5FE)),
+    pct_5_to_14 = pct_func(c(fiveto9FE + fiveto9ME + tento14ME + tento14FE)),
+    pct_15_to_19 = pct_func(c(fivteento17ME + fivteento17FE + eighteento19FE + eighteento19ME)),
+    pct_twenty_to24 = pct_func(c(twentyME + twentyFE + twentyoneME + twentyoneME + twentytwoto24ME + twentytwoto24FE)),
+    pct_twentyfive_to34 = pct_func(c(twentyfiveto29ME + twentyfiveto29FE + thirtyto34FE + thirtyto34ME)),
+    pct_thirtyfive_to44 = pct_func(c(thirtyfiveto39ME + thirtyfiveto39FE + fortyto44ME + fortyto44FE)),
+    pct_fortyfive_to54 = pct_func(c(fortyfiveto49ME + fortyfiveto49FE + fiftyto54ME + fiftyto54FE)),
+    pct_fiftyfive_to61 = pct_func(c(fiftyfiveto59ME + fiftyfiveto59FE + sixtyto61ME + sixtyto61FE)),
+    pct_sixtytwo_to66 = pct_func(c(sixtytwoto64ME + sixtytwoto64FE + sixtyfiveto66ME + sixtyfiveto66FE)),
+    pct_sixtysix_to74 = pct_func(c(sixtysevento69ME + sixtysevento69FE + seventyto74ME + seventyto74FE)),
+    pct_seventyfive_and_above = pct_func(c(seventyfiveto79ME + seventyfiveto79FE + eightyto84ME + eightyto84FE + eightytive_aboveME + eightytive_aboveFE)),
+    pct_owner = (owner_occupiedE / total_occupiedE) * 100,
+    pct_rent = (renter_occupiedE / total_occupiedE) * 100,
+    pct_built_2014_or_later = ((built_2014_or_laterE + built_2010_2013E) / total_builtE) * 100,
+    pct_female_hh = (female_householderE / total_pop) * 100,
+    pct_female = (female_totE / total_pop) * 100,
+    pct_manu_work = (manufacturing_workE / total_employedE) * 100
+  )
+
+```
+
+
+```{r include=FALSE, warning=F}
+# median income
+c_df %>%
+  na.omit() %>%
+  ggplot(aes(median_income)) +
+    geom_histogram(bins = 45) +
+    geom_vline(xintercept = mean(c_df$median_income, na.rm = T), color = "red")
+  
+
+# urban/rural 
+table(c_df$urban)
+prop.table(table(c_df$urban))
+barplot(table(c_df$urban))
+
+# unemployment
+c_df %>%
+  na.omit() %>%
+  ggplot(aes(unemployed)) +
+    geom_histogram(bins = 45) +
+    geom_vline(xintercept = mean(c_df$unemployed, na.rm = T), color = "red")
+
+# Gini 
+c_df %>%
+  na.omit() %>%
+  ggplot(aes(GINIE)) +
+    geom_histogram(bins = 45) +
+    geom_vline(xintercept = mean(c_df$GINIE, na.rm = T), color = "red")
+
+# segregation index
+c_df %>%
+  na.omit() %>%
+  ggplot(aes(ls)) +
+  geom_histogram(bins = 45) +
+  geom_vline(xintercept = mean(c_df$ls, na.rm = T), color = "red")
+
+# education 
+c_df %>%
+  na.omit() %>%
+  ggplot(aes(ls, pct_bachelors_and_above)) +
+  geom_point() +
+  geom_smooth()
+
+# mean life expectancy
+c_df %>%
+  na.omit() %>%
+  ggplot(aes(mean_life_exp)) +
+  geom_histogram() +
+  geom_vline(xintercept = mean(c_df$mean_life_exp, na.rm = T), color = "red")
+
+```
+
+
+
+```{r include=FALSE, warning=F}
+
+# select vars for PCA
+pr_vars <- c_df %>%
+  select(median_rent, median_income, median_house_value, pct_bachelors_and_above)
+
+pr_vars$geometry <- NULL
+pr_vars <- data.frame(pr_vars)
+
+# if you want to impute means
+
+#for(i in 1:ncol(pr_vars)){
+#  pr_vars[is.na(pr_vars[,i]), i] <- mean(pr_vars[,i], na.rm = TRUE)
+#}
+
+# correlation plot
+
+PerformanceAnalytics::chart.Correlation(pr_vars)
+
+# impute all NA with 0
+pr_vars[is.na(pr_vars)] <- 0
+
+
+# PCA
+ses_pc <- prcomp(pr_vars, scale = T)
+ses_pc
+
+cor(ses_pc$x)
+# means
+ses_pc$center
+
+# sds
+ses_pc$scale
+
+summary(ses_pc)
+
+ses_pc$sdev^2
+
+
+head(ses_pc$x)
+
+## make ses scale go in positive direction. 
+ses_pc$x <- - ses_pc$x
+
+head(ses_pc$x)
+
+
+# bind back to main dataframe.
+c_df <- cbind(c_df, ses_pc$x)
+
+
+hist(c_df$PC1)
+
+c_df <- c_df %>%
+  rename(ses = PC1)
+
+#tmap::tmap_mode("view")
+#tm_shape(c_df) +
+#  tm_fill(col = "ses",
+#          style = "quantile",
+#          n = 20,
+#          border.col = TRUE,
+#          midpoint = NA)
+#
+#tm_shape(c_df) +
+#  tm_fill(col = "mean_life_exp",
+#          style = "quantile",
+#          n = 6,
+#          border.col = TRUE,
+#          midpoint = NA)
+
+c_df <- c_df %>%
+  rename(life_e = mean_life_exp)
+
+
+# need to rename some vars before saving to ESRI Shapefile. 
+c_df2 <- c_df %>% select(name = NAME, urban, tot_pop = totalE, ls, ses, gini = GINIE, pct_unemp = unemployed, pct_pov = poverty_pct, medhval = median_house_value, pct_manu = pct_manu_work, pct_fem =  pct_female, pct_femhh = pct_female_hh)
+
+# wrtie to folder as spatial data error
+#st_write(c_df2, "seg_data.shp",  dsn = here::here(), driver = "ESRI Shapefile")
+
+```
+
+
+<br>
+
+<br>
+
+<h3>**Abstract**</h3>
+
+  This paper will test the relationship between residential racial segregation index and mean life expectancy of a county. I am interested in seeing the distribution of residential racial segregation across U.S counties and see how it relates to mean life expectancy in a county. Residential racial segregation has been associated with unequal opportunities and unequal distributions of toxic emissions and access to various health and educational facilities, this paper will look at the relationship between county residential racial segregation and see if residential racial segregation is non-linearly related to mean life expectancy. My research question asks the following: is residential racial segregation in United States counties related to mean life expectancy in those counties? To test this relationship, I will be using Census county level data from ACS 2018 and Center of Disease Control data on life expectancy by county from 2017. This paper tries to measure accurate spatial effects and relationships visualize spatial relationships. 
+
+<br>
+
+<h3>**Introduction**</h3>
+
+Local residential racial diversity is what many researchers in social sciences look forward to achieving, a lot of social science research shows residential racial segregation as prominent  topic in the social science literature.  There is a lot of research showing detrimental effects of residential racial segregation with measures such as injury rates, where blacks were much more likely than whites to be hospitalized because of injuries in Pennsylvania where more than 88.5% of the population is white (A. Fabio, E.K. Sauber-Schatz et.al, 2009). County racial segregation is also associated with preterm births (R. Anthopolos et.al, 2014), housing foreclosures (Jacob S. Rugh and Douglas S. Massey, 2010), mother smoking (Tse-Chuan Yang, Carla Shoff & et.al,  2014), over policing (S.L. Kent & J.T. Carmichael, 2013) and many other injustices and inequalities in treatment of minorities (Elizabeth Wrigley-Fielda, 2020, Tse-Chuan Yang & Stephen A. Matthews, 2015, Travis Riddle & Stacey Sinclair, 2018).  This paper will explore relationship between residential racial segregation and mean life expectancy, which is a important public health issue. It is also important to use proper spatial methods that addresses geographical variation in results and controls for it. 
+
+<br>
+
+
+</center>
+
+<br>
+
+
+
+<br>
+
+<h3>**Backgroud**</h3>
+
+Previous research has shown that segregation has negative impacts on personal life, health and economic opportunities.  In studying county level segregation and injury rates in Pennsylvania, A. Fabio, E.K. Sauber-Schatz et.al found positive relationship between racial segregation and injury rates.  More specifically the researchers were investigating whether within county racial segregation was associated with increased odds of violent injury separating out the individual level and county level effects.  Researchers in this study used data from Pennsylvania Health Care Cost Containment Council on discharged patients (individual level) and another source was from the 1990 Census (county level).  Researchers used generalized estimating equations which could be described as multilevel analyses with binary outcome. The results indicated that racial segregation on a county level was positively related to injury rates at and individual level.  Interaction between segregation and race was also positive, further modeling showed that in for Non-White model had stronger odds ratio with injury rates as compared to White model, meaning that in the model of nonwhite population injury rates were higher than in white population.  This research shows how disproportionate injury rates are in the state of Pennsylvania where about 88.5% of the population was White and 9.2% was African American, while most of the injuries were within non-white populations (A. Fabio, E.K. Sauber-Schatz et.al, 2009).  My research will contribute to the field of research of segregation and will incorporate spatial methods which will help explain geographical variation and strengths of effect.  
+
+Racial inequalities and segregation also had a disproportionate effect on African Americans during Covid-19 crisis.  Elizabeth Wrigley-Fielda, 2020, looked at data from National Center for Health Statistics and Census data to see the disproportionate death toll of Blacks as compared to Whites.  Demographic modeling estimated that White mortality will be lower than Black mortality if less than 400,000 mortalities keep happening in White population, it will the less consequential for overall White mortality than racial inequality for Black population mortality is every year.  She also estimated that unless White mortality in 2020 increases to 31% - 46% the Black age expectancy will be lower than White age expectancy. Her findings highlight how racial death disparities are present in the current health crisis event as Covid-19 (Elizabeth Wrigley-Fielda, 2020).  My finding will contribute literature no the injustices that some groups receive and will highlight the effect of racial segregation on mean life expectancy across space.
+
+In studying preterm birth in North Carolina, researchers (R. Anthopolos, Jay S. Kaufman, et.al, 2014) were looking if racial segregation at a census tract level is related to preterm births at census tract level.  Researchers estimate direct and indirect effects by performing logistic regression and retrieving its coefficients. They found out that adjusted total effect of an interquartile increase in racial isolation on preterm birth was 27 preterm births per 1000 births.  Their second finding was that poor built environment interacted with racial isolation had a positive (0.022) effect on preterm births and poor built environment accounted for 35 percent of the total effect.  Authors note that racial isolation is indirectly affected preterm birth through poor built environment, but also unhealthy indoor environments and maternal coping behavior.  The authors point that racial isolation is a macro phenomenon which can affect personal health of individuals (R. Anthopolos, Jay S. Kaufman, Lynne C. Messer and Marie Lynn Miranda, 2014).  This study shows that racial segregation and isolation can damage health and life outcomes, it is important to find relationships between most disadvantaged neighborhoods through-out space with proper spatial methods. 
+
+Other research has shown how racial segregation on county level relates to smoking of mothers during pregnancy, Tse-Chuan Yang et.al used data from National Center for Health Statistics for individual level data and American Community Survey for county level data. Researchers used multi-level modeling to understand if racial segregation interaction with by race is related to mothers smoking during pregnancy.  Their results show that interaction with non-Hispanic whites increases the odds of maternal smoking, particularly in Hispanic and Asian populations.   Most importantly their results indicate that for black mothers less residential segregation translates into lower probability of black mothers smoking during pregnancy (Tse-Chuan Yang, Carla Shoff & et.al,  2014).  This finding suggests that racial segregation can have positive impact on the probability of mothers smoking during her pregnancy in Hispanic and Asian mothers. My study will contribute to the literature on racial segregation effects by showing how residential racial segregation relates to mean life expectancy across counties. 
+
+In other study researchers (Tse-Chuan Yang & Stephen A. Matthews, 2015) looked at how segregation relates to county level mortality rates across U.S.  Their main points of interest were to see if segregation related to county level mortality rates across the space and to see if there was variation by race in mortality rates, but also the researchers were looking at different dimensions of segregation (i.e. evenness, exposure, concentration, centralization, and clustering) and how they can relate to mortality.  Their results show that segregation between white & black had a negative coefficient which suggests that segregation between those groups leads to more deaths.  Interestingly segregation between white & Hispanic and white & Asian showed negative coefficients which suggests that segregation between those races leads to lower mortality rates.   Also, in all dimensions of segregation measurements coefficients were holding with positive for blacks and negative for Hispanic as well as Asian races.  The authors note that these relationships can be different because they omitted using controlling for other variables such that come from spatial processes.   Researchers found that spatial filtering approach made inequality and social capital did not strongly relate to mortality rates, they argue that there are other confounders which were not measured (Tse-Chuan Yang & Stephen A. Matthews, 2015).  
+
+Stephanie L. Kent & Jason T. Carmichael 2013 using data from 1980-2010 tested if racial segregation is related to formal social control efforts by the state.  More specifically the researchers looked at how racial isolation of certain groups may influence on the efforts to control crime, the researchers used size of municipal police departments as proxy of social control.  Researchers used fixed-effects pooled time-series estimation technique to test the relationship between segregation and count of police officers per 100,000 people.  The researchers found that segregation has a non-linear effect on policemen count, most integrated neighborhoods have lower numbers of policemen while most highly segregated areas have higher numbers of policemen. This finding is consistent with contact hypothesis as authors suggest which states that hostility between people declines as number of different groups live in the same area increases.  Interestingly authors also found that number of policemen increases with proportion of Black but once Black population reaches about 10 percent of the total city population the number of policemen starts to level off and then slowly declines, authors point at the political version of the threat hypothesis which states that with sizable presence African Americans gain political influence and gain control (S.L. Kent & J.T. Carmichael, 2013).  My research will seek to understand how county level residential racial segregation can relate to mean life expectancy across geographical space, which can highlight areas of most disadvantage.
+
+In another study researchers (A. Hagan, B. McCarthy et. Al, 2018) were looking at legal cynicism and how it relates to crime calls, specifically in minority neighborhoods.  More specifically they were asking is racial isolation and concentration can explain variance in 911 call for protection and prevention.  The researchers find that 911 calls increase in neighborhoods with high concentrations of minorities and disadvantaged neighborhoods that were also hit by the housing crisis in 2007-2008.  The authors show persistent effect of legal cynicism from 1990 till 2006-2008 and how it statistically relates to black and Hispanic proportion in census tracts in Chicago.  Authors conclude that 911 calls will be highest due to disadvantages and racial isolation of those neighborhoods, while less emphasis is placed on police procedural justice and more on the former (A. Hagan, B. McCarthy et. Al, 2018).  My research will confirm if more disadvantaged neighborhoods are segregated and perhaps more isolated from the society.
+
+In a study researchers Jacob S. Rugh and Douglas S. Massey looked at residential segregation and the foreclosure crisis in the US.  Authors argue that residential segregation in US has created areas of minority residents to whom risky sub-prime loans were deferentially targeted which were in great demand in mortgage backed securities and could also be sold on secondary markets.  Their modeling results indicate that Hispanic and Black segregation strongly predicted foreclosure rate that the area will experience.  Authors argue that residential segregation was the main driver behind foreclosures in Hispanic and Black neighborhoods during the market collapse (Jacob S. Rugh and Douglas S. Massey, 2010).  My study will help identify regional areas where racial segregation has the biggest impact on the mean life expectancy of a county.
+
+Looking at individual preferences on where to live within white individuals through agent-based modeling, researchers Yu Xie & Xiang Zhou estimated heterogeneity of whites’ preferences in their attitudes toward having black neighbors.   Main findings of this study indicate strong heterogeneity in whites’ preferences in attitudes toward black neighbors, there are white groups who prefer to have many black neighbors and white groups who like to live in homogeneous neighborhoods.  Another finding was that in the heterogeneity in neighborhood preference has a negative relationship with racial segregation, making racial segregation less severe in the long run.  Lastly, the authors suggest that heterogeneity in preferences to live in black neighborhoods should be interpreted as whites’ overall racial attitudes toward black population (Yu Xie & Xiang Zhou, 2012). My research will highlight areas where segregation has the highest effect on mean life expectancy and contribute to the field of literature on segregation and its impact.  
+
+Another study was looking at the school disciplinary disparities between white and black students across the United States counties.  Researchers (Travis Riddle & Stacey Sinclair, 2018) were looking at county estimates of racial bias and if they were related to racial disciplinary disparities across schools and children.  Their results point to major disparities in how children are disciplined across counties, they found moderate relationship between county level racial bias (explicit and implicit) and the likelihood of a children (black and white) being punished/disciplined. They found that 96,000 schools covering around 32 million white and black students are affected by this racial bias and unequal treatment of students (Travis Riddle & Stacey Sinclair, 2018).  These results suggest county level segregation plays an important role in many of our societal ills. My research will show were segregation is the highest in geographical space and how it relates to mean life expectancy, it is important to identify those regions and try to mitigate this problem of inequality. 
+
+<br>
+
+<h3>**Figure 1. LISA map of Residential Racial Segregation Clusters**</h3>
+
+<center>
+
+![](pics\\lisa.png) 
+
+<br>
+
+<h3>**Research Question**</h4>
+
+Can variations in mean life expectancy be related to various demographic measures on county level? More specifically is socio-economic index, residential racial segregation index and other county level demographic variables help explain some of the variation in county level mean life expectancy?
+
+<br>
+
+<h3>**Methods**</h3>
+
+Data for this analysis uses two data sources one is from Center of Disease Control 2017 which was measured on census tract level. CDC 2017 data on mean life expectancy was aggregated to county level by taking the mean life expectancy for particular county. Second source of data was county level American Community Survey 2018, which gathers data on aggregated demographic variables for each county.  Two data sets were merged by county unique GEOID and the following variables were selected: mean life expectancy, urban factor (1 = High Population, 2 = Low Population), total population, racial segregation M index, percent unemployed, percent single female householder, percent white, percent black, percent asian, percent hispanic/latino, percent who work in manufacturing job, socio-economic index, median housing value, percent in poverty, percent with bachelor degree or higher, percent with no health insurance, percent married. Residential racial segregation index was calculated by using 4 racial groups through package called segregation (Benjamin Elbers, 2020).  Socio-economic composite score was computed by using Principal Component Analysis where the loading was high for the first component, variables that were used in PCA were median rent, median household income, median housing value, percent high status job and percent bachelor degree or higher.  Those variables were dropped from final analysis due to potential multi-collinearity. Spatial Durbin model was chosen to be the best one as Lagrange Multiplier tests indicated that spatial error and lag is statistically significant and should be controlled for. To control for non-stationarity Geographically Weighted Regression was used, which fits a linear model to each geographical region.  
+
+<br>
+<h3>**Table 1. Descriptive Statistics**</h3> 
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+
+# select variables for table
+c_df_tbl <- c_df %>%
+  select(
+    `Mean Life Expectancy` = life_e,
+    `High / Low Population` = urban,
+    `Total Population` = total_pop,
+    `Racial Segregation M Index` = ls,
+    `Percent Female` = pct_female,
+    `Percent Single Female Householder` = pct_female_hh,
+    `Percent White` = pct_white,
+    `Percent Black` = pct_black,
+    `Percent Asian` = pct_asian,
+    `Percent Hispanic/Latino` = pct_hispanic,
+    `Percent High School Degree` = pct_high_sch,
+    `Percent Manufacturing Job` = pct_manu_work,
+    `SES Index` = ses,
+    `Percent Poverty` = poverty_pct,
+    `Percent With Bachelor Degree and Higher` = pct_bachelors_and_above,
+    `Percent With No Health Ins.` = pct_no_hins,
+    `Percent Married` = pct_married
+  )
+
+c_df_tbl$geometry <- NULL
+
+```
+<br>
+<center>
+*GWR Model*
+<br>
+$$
+\begin{aligned}
+
+\ y_{i}&=\beta_{i0}+\beta_{i1}x_{i1}+ ...\beta_{ip}x_{ip}+\varepsilon_{i}
+
+\end{aligned}
+$$
+
+
+GWR differs from OLS by allowing the effects vary geographically across space. In this equation $i$ represents each location (county), $p$ represents independent variables and $\varepsilon_{i}$ represents error term. 
+
+
+
+I am using Gaussian weighting function which assigns weights to neighbors across space. 
+
+
+$\ w_{ij} = exp(-\frac{d^2_{ij}}{h^2})$ 
+
+In this equation $d_{ij}$ is the distance between location $i$ and $j$ and $h$ is the bandwidth. 
+
+Finding bandwidth $h$ R uses Cross-Validation technique which will help find optimal bandwidth for the regression. 
+
+$$
+\begin{aligned}
+
+\ CV = \sum_{i}\left[y_{i} -  \hat{y}\neq(\beta)\right]^2
+
+\end{aligned}
+$$
+
+
+
+
+```{r message=FALSE, echo=FALSE, warning=FALSE}
+# create descriptives table
+c_df_tbl %>%
+  tbl_summary(
+    statistic = list(all_continuous() ~ "{mean} ({sd})",
+                     all_categorical() ~ "{n} / {N} ({p}%)"),
+    digits = all_continuous() ~ 2,
+    missing_text = "(Missing)"
+  ) %>%
+  bold_labels() %>%
+  modify_header(label ~ "**Variable**") %>%
+  as_flex_table()
+
+```
+
+<br>
+<h3>**Results.**</h3> 
+
+Results from spatial Durbin model show that Rho spatial parameter is statistically significant p-value <0.000, Rho = 0.21139, a strong effect between neighboring counties in the measured outcome mean life expectancy.  Rho parameter means that mean life expectancy in one county will have a spill-over effect into neighboring counties. The effect of segregation is significant p-value <0.000, beta 2.3252, for each unit increase in segregation measure mean life expectancy goes up by about a mean of 2.3 years. Interestingly, segregation measure squared is not significant p-value >0.05, but the coefficient flips to a negative side.  SES index is significant p-value <0.000, beta 0.7082, for each unit increase in SES measure we see an average increase in life expectancy by 0.7082 years. Percent unemployed in a county is significant p-value <0.005, beta -0.0486,  means that as unemployment percent increases by one unit it decreases mean life expectancy in a county by -0.0486 years.  Urban county indicator is significant p-value <0.000, beta -0.4014, which means that urban counties on average experience greater decline in mean life expectancy of -0.4014 years.  Percent single female households in a county is significant p-value <0.000, beta -0.1797, for each additional unit increase in percent of single female households in a county decreases mean life expectancy by -0.1797 years.  Percent of population working in manufacturing jobs is not statistically significant p-value >0.05. Percent high school degree is not statistically significant p-value >0.05.  Lagged segregation measure is significant p-value <0.000 and beta -1.7984, which means that neighboring county segregation has a negative effect on mean life expectancy a decrease by -1.7984 years. At the same time lagged segregation measure squared is significant p-value <0.000 and has beta 2.0302 which means that for each unit increase in neighboring county segregation measure, mean life expectancy increases by 2.0302 years.  Both of these results suggest that in geographical space there are neighboring counties that have high segregation and have a positive effect of mean life expectancy but also there are counties of high segregation that negatively impact mean life expectancy in neighboring counties.  Lagged SES index is statistically significant has p-value <0.000, beta is -0.5393 which means that as SES index increases in neighboring counties it negatively impacts neighboring counties by decreasing their mean life expectancy by -0.5393 years. Lagged percent unemployment is significant p-value <0.000, beta -0.2564, means that for additional unit increase in unemployment percent in neighboring counties impacts other counties by decreasing their mean life expectancy by -0.2564 years.  Lagged urban indicator is not statistically significant p-value >0.05.  Lagged percent single female householder measure is also not significant p-value >0.05.  Interestingly lagged percent manufacturing work is significant p-value <0.000, beta -0.0379, means that as percent manufacturing increases in neighboring counties it will cause mean life expectancy to decrease by -0.0379 years in other counties within close proximity. Lagged percent high school degree is significant p-value <0.000, beta -0.1079, means that as percent high school degrees increase in neighboring counties mean life expectancy decreases by -0.1079 years in counties next to those where percent high school degree increase.  Lastly we see that Durbin model is better than ordinary least squares regression because AIC is lower 12546 for spatial Durbin and OLS is 12816.  
+
+```{r  include=FALSE, warning=F}
+
+df <- as(c_df, "Spatial")
+
+# pop density per sqkm
+#c_df$area <- st_area(c_df) / (1000*1000)
+#c_df$pop_density <- c_df$total_pop / c_df$area
+#hist(c_df$pop_density)
+
+#summary(c_df$pop_density)
+
+sum(is.na(df@data))
+# fill all na with 0 
+#c_df@data[is.na(c_df@data)] <- 0
+
+# or remove NA and then joint back to data.
+#df@data <- na.omit(df@data)
+
+# or impute with mean
+ok <- sapply(df@data, is.numeric)
+df@data[ok] <- lapply(df@data[ok], zoo::na.aggregate)
+
+
+###Create a queen's neighborhood weight matrix.
+df_nbq <- poly2nb(df)
+
+summary(df_nbq)
+
+coords <- coordinates(df)
+
+#plot(df)
+#plot(df_nbq, coords, add = T)
+
+### spatial weights for neighbors lists
+df_nbq_w <- nb2listw(df_nbq, zero.policy = T)
+
+hist(df$ls)
+hist(df@data$life_e)
+
+#rename
+df@data$segregation <- df@data$ls
+
+# linear model
+lm_mod <- lm(life_e ~ segregation*urban + I(segregation^2) + ses + unemployed + urban  + pct_high_sch, data = df)
+
+
+
+###Run Langrane Multiplier tests to identify the type of spatial regression model to run.
+Life.lagrange <- lm.LMtests(lm_mod, df_nbq_w, test = c("LMerr","RLMerr","LMlag","RLMlag","SARMA"), zero.policy = T)
+
+#print(Life.lagrange)
+```
+<br>
+
+<h3>**Table 2**</h3> 
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+LMerr <- Life.lagrange$LMerr
+RLMerr <- Life.lagrange$RLMerr
+LMlag <- Life.lagrange$LMlag
+RLMlag <- Life.lagrange$RLMlag
+SARMA <- Life.lagrange$SARMA
+
+models <- c("LMerr", "RLMerr", "LMlag", "RLMlag", "SARMA")
+
+table_lag <- as.data.frame(rbind(LMerr$p.value,
+                                 RLMerr$p.value,
+                                 LMlag$p.value,
+                                 RLMlag$p.value,
+                                 SARMA$p.value))
+
+
+tab_mod <- as.data.frame(rbind(LMerr$statistic,
+                               RLMerr$statistic,
+                               LMlag$statistic,
+                               RLMlag$statistic,
+                               SARMA$statistic))
+
+
+table_lag$Sig <- ifelse(table_lag$V1 < 0.001, "***", table_lag$V1)
+
+tbl_mod <- cbind(models, tab_mod, table_lag$Sig)
+colnames(tbl_mod) <- c("Models", "Statistic", "Sig.")
+
+
+kable(tbl_mod, row.names = FALSE, digits = 2) %>%
+      kable_styling(full_width = F, position = "left")
+
+```
+
+To help me identify the right regression model I will be testing for spatial dependence with Lagrange Multiplier tests.  The results indicate the need to correct for spatial lag and spatial error which give me a hint to use Spatial Durbin model, which can account for both lag and error.
+
+<br>
+<br>
+```{r  echo=FALSE, warning=F, message=FALSE}
+
+###Specify Spatial Durbin. MOdel 1 just exploratory 
+#life_sar <- spatialreg::lagsarlm(life_e ~ segregation + ses + unemployed + urban, data = df, df_nbq_w, type = "mixed", tol.solve = 1.0e-15, zero.policy = T)
+
+#tt <- broom::tidy(life_sar, conf.int = T)
+
+#tt <- tt %>%
+#  filter(term != "(Intercept)")
+
+
+#sp1 <- tt %>%
+#  mutate(cola = ifelse(estimate > 0, "blue", "red")) %>%
+#  ggplot(aes(term, estimate, color = cola)) +
+#   geom_hline(yintercept = 0, size = .8) +
+#    geom_pointrange(aes(ymin = conf.low, ymax = conf.high)) +
+#    geom_point() + 
+#    coord_flip() +
+#    scale_color_identity() +
+#    ggthemes::theme_tufte() +
+#    labs(
+#      title = "Coefficients from Spatial Durbin Model",
+#      x = "Term",
+#      y = "Estimate"
+#    ) +
+#    theme(
+#      plot.title = element_text(family = "sans", color = "Royalblue1", hjust = 0.5)
+#    )
+
+
+life_sar2 <- spatialreg::lagsarlm(life_e ~ segregation + I(segregation^2) + ses + unemployed + urban +  pct_female_hh + pct_manu_work + pct_high_sch, data = df, df_nbq_w, type = "mixed", tol.solve = 1.0e-15, zero.policy = T)
+
+
+#df$res_sar2 <- residuals(life_sar2)
+
+tt2 <- broom::tidy(life_sar2, conf.int = T)
+
+tt2 <- tt2 %>%
+  filter(term != "(Intercept)") %>%
+  mutate(term = case_when(term == "rho" ~ "Rho parameter",
+    term == "segregation" ~ "Segregation Index",
+    term == "I(segregation^2)" ~ "Segregation Index Squared",
+    term == "ses" ~ "SES Index",
+    term == "unemployed" ~ "Percent Unemployed",
+    term == "urbanurban" ~ "Urban Counties",
+    term == "pct_female_hh" ~ "Percent Single Female Households",
+    term == "pct_manu_work" ~ "Percent Work Manufacturing",
+    term == "pct_high_sch" ~ "Percent High School Degree",
+    term == "lag.segregation" ~ "Lagged Segregation Index",
+    term == "lag.I(segregation^2)" ~ "Lagged Segregation Index Squared",
+    term == "lag.ses" ~ "Lagged SES Index",
+    term == "lag.unemployed" ~ "Lagged Percent Unemployed",
+    term == "lag.urbanurban" ~ "Lagged Urban Counties",
+    term == "lag.pct_female_hh" ~ "Lagged Percent Single Female Households",
+    term == "lag.pct_manu_work" ~ "Lagged Percent Work Manufacturing",
+    term == "lag.pct_high_sch" ~ "Lagged Percent High School Degree"
+  ))
+
+
+sp2 <- tt2 %>%
+  mutate(cola = ifelse(estimate > 0, "blue", "red")) %>%
+  ggplot(aes(term, estimate, color = cola)) +
+    geom_hline(yintercept = 0, size = .8) +
+    geom_pointrange(aes(ymin = conf.low, ymax = conf.high)) +
+    geom_point() + 
+    coord_flip() +
+    scale_color_identity() +
+    ggthemes::theme_tufte() +
+    labs(
+      title = "Coefficients from Spatial Durbin Model",
+      x = "Term",
+      y = "Estimate"
+    ) +
+    theme(
+      plot.title = element_text(family = "sans", color = "Royalblue1", hjust = 0.5)
+    )
+
+
+```
+<br>
+
+<h3>**Table 3. Spatial Durbin Model Output **</h3> 
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+
+kableExtra::kable(tt2, row.names = FALSE, digits = 2, label = "Spatial Durbin Model Output") %>%
+  kable_styling(full_width = F, position = "left")
+
+#writeOGR(df,
+#         dsn = here(),
+#         layer = "df_sp_sar",
+#         driver = "ESRI Shapefile")
+
+
+#summary(impacts(life_sar, d_df))
+
+
+# test for heteroscedasticity 
+#bptest.sarlm(life_sar, studentize = T)
+
+```
+<br>
+
+
+<h3>****</h3> 
+<h3>**Figure 2**</h3> 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+sp2
+
+```
+<br>
+
+Plot of coefficients from the spatial Durbin model makes interpretation a bit easier and shows which variables crossed the zero with their confidence interval. We can see that segregation index squared has right tail of its confidence interval touching zero which invalidates the effect of this coefficient.  We can also see that many of the effects are close to zero but segregation indexes fluctuate around from positive to negative and have wide confidence intervals which do not cross 0. It implies that segregation is not linear and it can increase mean life expectancy in a county and in some geographies it can decrease mean life expectancy in other counties. Similarly lagged segregation follows the same pattern where in some counties it can improve mean life expectancy and in other it causes mean life expectancy to decrease.
+
+
+```{r  include=FALSE, warning=F}
+
+# Geographical Weighted Regression
+#library(spgwr)
+
+#bwr <- gwr.sel(life_e ~ segregation + urban + ses + unemployed + urban + pct_female_hh + pct_manu_work, data = df, gweight = gwr.Gauss, verbose = TRUE)
+
+#gwr_mod <- gwr(life_e ~ segregation + urban + ses + unemployed + urban + pct_female_hh + pct_manu_work, data = df, bandwidth = bwr, gweight = gwr.Gauss)
+
+#writeOGR(gwr_mod$SDF, 
+#         dsn = here(), 
+#         layer= "GWR_Results_for_QGIS",
+#         driver="ESRI Shapefile")
+
+
+
+```
+
+<br>
+
+<h3>**Figure 3**</h3> 
+
+![](pics\\gwrmaps.png)
+Geographically weighted regression results show that R2 is not uniformly distributed across space, there are regions in North-East, South-East, Florida, West-Coast and North-West where R2 is between 61% and 96%.  Some regions in North-East, South-East, parts of Texas, North-West show R2 between 52% and 60%, other regions show R2 between 16% and 51%.  Map of Segregation effect also shows non uniform distribution, this finding confirms our previous finding from the Sptaial Durbin model that segregation effect is non-linear and shows both positive and negative effects across space.  In the segregation effect map we see that mostly regions in the West and South-West as well as North-West where effect of residential racial segregation is ranging between 2.5 - 16 on mean life expectancy in a county.  Also the map shows that North-East, parts of South-East, clusters in California, clusters in Mid-West, North-West, Texas, Florida, South, Mid-East all show negative effect on mean life expectancy in a county ranging between -1.4 - 11.8 years.  This finding shows that residential racial segregation can have positive effect as well as negative effects, we can also see that the effect tends to be negative around metropolitan areas like Los-Angeles and New York Metro but also in counties across most states.  
+
+
+<br>
+<h3>**Discussion.**</h3> 
+<br>
+
+In the last part of this paper I want to point to the differences that residential racial segregation can have on mean life expectancy on a county level. We saw that there are regions where segregation can increase mean life expectancy in a county and regions where segregation can decrease mean life expectancy in a county. This study can serve as a first step of identifying regional patterns and which can then be decomposed to smaller geographical regions like census tracts.  Aggregated analysis like this one hides within county variation, therefore it will be useful to analyze smaller units.  This study used proper spatial methods to control for the geographical variation and showed that urban counties experience more detrimental effect on mean life expectancy than non-urban counties, which brings attention to cities and the amount of variation which can be found within. This study showed that percent unemployed has a negative effect on mean life expectancy, which means that current pandemic and job losses can shorten life of certain groups.  This study showed that percent single female households in a country has a negative effect on mean life expectancy, this finding highlights the issues of single female households in modern society.    
+
+<br>
+
+<br>
+
+
+*******************
+
+<h3>**Reference Page**</h3>
+
+Anthopolos, R., Kaufman S. J., Messer, C, L., & Miranda L, M. (2014). Racial Residential Segregation and Preterm Birth. Built Environment as a Mediator. *Epidemiology (Cambridge, Mass.)* 25(3), 397-405.
+
+
+Elbers, B. (2018). A Method for Studying Differences in Segregation Across Time and Space. *SocArXiv doi:https://doi.org/10.31235/osf.io/ya7zs*
+
+
+Fabio, A., Sauber-Schatz, E., Barbour, K., & Li Wei, (2009). The Association Between County-Level Injury Rates and Racial Segregation Revisited: A Multilevel Analysis. *American Journal of Public Health* 99(4), 784-753. 
+
+
+Hagan, J., Mccarthy, B., Herda D., & Cann Chandrasekher, A. (2018). Dual-Process Theory of Racial Isolation, Legal Cynicism and Reported Crime. *Proceedings of the National Academy of Sciences doi:https://doi.org/10.1073/pnas.1722210115*, 28, 7190-7199. 
+
+
+Kent, L. S. & Carmichael, T. J. (2014). Racial Residential Segregation and Social Control: A Panel Study of the Variation of Police Strength Across U.S Cities, 1980-2010. *American Journal of Criminal Justice*, 39, 228 - 249.
+
+
+Riddle, T & Sinclair, S. (2019). Racial Disparities in School-Based Disciplinary Acions are Associated with County - Level Rates of Racial Bias. *Proceedings of the National Academy of Sciences doi:https://doi.org/10.1073/pnas.1808307116*, 17, 8255 - 8260.
+
+
+Rugh, S., J,. & Massey S., D., (2010). Racial Segregation and the American Foreclosure Crisis. *American Sociological Review* 75(5), 629-651. 
+
+
+Wrigley-Field Elizabeth, (2020). US Racial Inequality May Be as Deadly as COVID-19. *Proceedings of the National Academy of Sciences doi:https://doi.org/10.1073/pnas.2014750117* 117(36), 21854-21856. 
+
+
+Xie Yu & Zhou Xiang (2012). Modeling Individual-level Heterogeneity in Racial Residential Segregation. *Proceedings of the National Academy of Sciences doi:https://doi.org/10.1073/pnas.1202218109*, 29, 11646 - 11651.
+
+
+Yang Tse-Chaun & Matthews A., S,. (2015). Death by Segregation: Does the Dimension of Racial Segregation Matter? *Public Library of Science doi:https://doi.org/10.1371/journal.pone.0138489* 
+
+
+[GWR Model](https://crd230.github.io/gwr.html)
+
+Yang Tse-Chuan, Shoff, C., Noah, J., A., Black, N., & Sparks S., C,. (2014). Racial Segregation and Maternal Smoking During Pregnancy: A Multilevel Analysis Using the Racial Segregation Interaction Index. *Social Science & Medicine* 107, 26-36. 
+
+
+
+
+
+
+
+
