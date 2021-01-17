@@ -1,6 +1,6 @@
 ---
 title: 'The Relationship Between Segregation, Socio-Economic Status, And Life Expectancy by using County Level Data. '
-author: "Gregory Utkin"
+author: "Gregoryut"
 date: "December 17, 2020"
 output:
   pdf_document: default
